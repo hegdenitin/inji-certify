@@ -310,8 +310,7 @@ public static void configureOtp() {
 		String csvIdentityId = mdocvpCsvIdentityId();
 		String sql = mdocvpIarSessionIdentityUpdateSql(authSession, csvIdentityId);
 		String selectSql = "SELECT auth_session FROM iar_session WHERE auth_session = '" + authSession + "'";
-		logger.error("Rewriting mdocvp IAR session identity_data to CSV id " + csvIdentityId
-				+ " for auth_session=" + authSession);
+		logger.error("Rewriting mdocvp IAR session identity_data to the configured CSV identity");
 		try {
 			String dbUrl = resolveInjiCertifyJdbcUrl();
 			String dbUser = InjiCertifyConfigManager.getproperty("db-su-user");
@@ -320,8 +319,8 @@ public static void configureOtp() {
 			List<Map<String, Object>> rows = ExtendedDBManager.executeSelectQuery(dbUrl, dbUser, dbPass, dbSchema,
 					selectSql);
 			if (rows == null || rows.isEmpty()) {
-				throw new AdminTestException("iar_session not found for auth_session=" + authSession
-						+ " in " + dbUrl + ". Check mdocvpCertifyDbName.");
+				throw new AdminTestException(
+						"iar_session not found for the IAR auth_session. Check mdocvpCertifyDbName.");
 			}
 			ExtendedDBManager.executeDBWithQueries(dbUrl, dbUser, dbPass, dbSchema, sql);
 		} catch (AdminTestException e) {
@@ -400,7 +399,6 @@ public static void configureOtp() {
 		if (!shouldEnsureMdocValiditySigned(testCaseDTO) || mdocDrivingLicenseSignedEnsured) {
 			return;
 		}
-		mdocDrivingLicenseSignedEnsured = true;
 		String certifyBase = InjiCertifyConfigManager.getInjiCertifyBaseUrl();
 		if (certifyBase == null || certifyBase.isBlank()) {
 			return;
@@ -419,6 +417,7 @@ public static void configureOtp() {
 			String original = config.optString("vcTemplate", "");
 			String updated = addSignedPlaceholderToMdocVcTemplate(original);
 			if (updated == null || updated.equals(decodePossiblyBase64Json(original))) {
+				mdocDrivingLicenseSignedEnsured = updated != null && updated.contains("\"signed\":");
 				return;
 			}
 			// Stored templates are Base64; VelocityTemplatingEngineImpl decodes them.
@@ -432,7 +431,9 @@ public static void configureOtp() {
 						+ " with signed validityInfo: HTTP "
 						+ (put == null ? "null" : put.getStatusCode()) + " "
 						+ (put == null ? "" : put.asString()));
+				return;
 			}
+			mdocDrivingLicenseSignedEnsured = true;
 		} catch (Exception e) {
 			logger.error("Could not add validityInfo.signed to " + MDOCVP_DRIVING_LICENSE_CONFIG_KEY
 					+ "; GetCredential will use the seeded template. " + e.getMessage());
