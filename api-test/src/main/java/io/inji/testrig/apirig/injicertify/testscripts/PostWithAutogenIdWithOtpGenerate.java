@@ -155,15 +155,16 @@ public class PostWithAutogenIdWithOtpGenerate extends InjiCertifyUtil implements
 						GlobalConstants.RESIDENT, testCaseDTO.getTestCaseName());
 			}
 
-			if (isIdaIdentityNotYetAvailable(otpResponse)) {
+			if (shouldRetrySendOtp(otpResponse)) {
 				logger.info("waiting for: " + uinGenDelayMs
-						+ " as UIN not available in IDA yet (IDA-MLC-018 or IDA-MLC-007)");
+						+ " as UIN not available in IDA yet ("
+						+ InjiCertifyUtil.describeMosipIdSendOtpFailure(otpResponse) + ")");
 				try {
 					Thread.sleep(uinGenDelayMs);
-
 				} catch (InterruptedException e) {
 					logger.error(e.getMessage());
 					Thread.currentThread().interrupt();
+					break;
 				}
 			} else {
 				break;
@@ -192,10 +193,10 @@ public class PostWithAutogenIdWithOtpGenerate extends InjiCertifyUtil implements
 				if (otpResponse.asString().contains("IDA-OTA-001")) {
 					throw new AdminTestException(
 							"Exceeded number of OTP requests in a given time, Increase otp.request.flooding.max-count");
-				} else if (isIdaIdentityNotYetAvailable(otpResponse)) {
+				} else if (shouldRetrySendOtp(otpResponse)) {
 					throw new AdminTestException(
 							"IDA rejected send-otp after retries ("
-									+ (otpResponse.asString().contains("IDA-MLC-018") ? "IDA-MLC-018" : "IDA-MLC-007")
+									+ InjiCertifyUtil.describeMosipIdSendOtpFailure(otpResponse)
 									+ "). IDA-MLC-018 means the UIN is not in IDA yet. IDA-MLC-007 is a generic "
 									+ "IDA failure. eSignet 1.8.0 calls IDA as /otp/{misp-lk}/{relyingPartyId}/"
 									+ "{clientId}; clientId must be a PMS-issued API key from "
@@ -247,12 +248,15 @@ public class PostWithAutogenIdWithOtpGenerate extends InjiCertifyUtil implements
 
 	/**
 	 * Released IDA returns IDA-MLC-018 while a newly created UIN is still being
-	 * indexed. Some deployments (including this MOSIP ID stack) return IDA-MLC-007
-	 * for the same window instead of treating it as a permanent invalid UIN.
+	 * indexed. Some deployments return IDA-MLC-007 for the same window. The MOSIP ID
+	 * stack can also wrap that window as eSignet {@code send_otp_failed}.
 	 */
-	private static boolean isIdaIdentityNotYetAvailable(Response otpResponse) {
+	private boolean shouldRetrySendOtp(Response otpResponse) {
 		if (otpResponse == null) {
 			return false;
+		}
+		if (testCaseName != null && testCaseName.toUpperCase().contains("MOSIPID")) {
+			return InjiCertifyUtil.isRetryableMosipIdSendOtpFailure(otpResponse);
 		}
 		String body = otpResponse.asString();
 		return body.contains("IDA-MLC-018") || body.contains("IDA-MLC-007");

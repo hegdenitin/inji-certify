@@ -1282,7 +1282,9 @@ public static void configureOtp() {
 		if (jsonString.contains(GlobalConstants.TIMESTAMP)) {
 			jsonString = replaceKeywordValue(jsonString, GlobalConstants.TIMESTAMP, generateCurrentUTCTimeStamp());
 		}
-		jsonString = refreshMosipRequestTimestamp(jsonString);
+		if (testCaseName == null || !testCaseName.contains("RequestTime_Neg")) {
+			jsonString = refreshMosipRequestTimestamp(jsonString);
+		}
 
 		return jsonString;
 	}
@@ -1502,15 +1504,30 @@ public static void configureOtp() {
 				return false;
 			}
 			for (int i = 0; i < errors.length(); i++) {
-				String errorCode = errors.getJSONObject(i).optString("errorCode");
-				if ("ldp_vc_config_exists".equals(errorCode) || "unknown_error".equals(errorCode)) {
+				JSONObject error = errors.getJSONObject(i);
+				String errorCode = error.optString("errorCode");
+				if ("ldp_vc_config_exists".equals(errorCode)) {
 					return true;
 				}
+				if ("unknown_error".equals(errorCode) && looksLikeDuplicateCredentialConfigKey(error)) {
+					return true;
+				}
+				logger.warn("AddCredentialConfig errorCode=" + errorCode + " message="
+						+ error.optString("errorMessage"));
 			}
 		} catch (Exception e) {
 			logger.warn("Could not parse Certify duplicate-config body: " + e.getMessage());
 		}
 		return false;
+	}
+
+	static boolean looksLikeDuplicateCredentialConfigKey(JSONObject error) {
+		if (error == null) {
+			return false;
+		}
+		String message = (error.optString("errorMessage") + " " + error.optString("message")).toLowerCase(Locale.ROOT);
+		return message.contains("uk_credential_config_key_id") || message.contains("duplicate key")
+				|| message.contains("already exists");
 	}
 
 	public static String alignMosipIdCredentialTypeForPresentationDuringIssuance(TestCaseDTO testCaseDTO,
@@ -2649,12 +2666,13 @@ public static void configureOtp() {
 				Response response = RestClient.getRequest(url, MediaType.APPLICATION_JSON, MediaType.APPLICATION_JSON);
 				JSONObject responseJson = new JSONObject(response.getBody().asString());
 				propertySources = responseJson.optJSONArray("propertySources");
-				if (propertySources == null) {
-					propertySources = new JSONArray();
-				}
-				certifyActuatorResponseByUrl.put(url, propertySources);
-				if (certifyActuatorResponseArray == null) {
-					certifyActuatorResponseArray = propertySources;
+				if (propertySources != null && propertySources.length() > 0) {
+					certifyActuatorResponseByUrl.put(url, propertySources);
+					if (certifyActuatorResponseArray == null) {
+						certifyActuatorResponseArray = propertySources;
+					}
+				} else {
+					propertySources = propertySources == null ? new JSONArray() : propertySources;
 				}
 			}
 
