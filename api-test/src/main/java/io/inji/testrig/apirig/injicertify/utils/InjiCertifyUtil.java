@@ -1225,11 +1225,17 @@ public static void configureOtp() {
 		}
 
 		if (jsonString.contains("$CLIENT_ASSERTION_DPOP_JWT$")) {
-			RSAKey dpopClientKey = null;
+			String storedDpopJwk = oidcJwkStore.get(OIDC_JWK_DPOP);
+			if (storedDpopJwk == null || storedDpopJwk.isBlank()) {
+				throw new SkipException(
+						"DPoP client key is not available. Ensure the DPoP OIDC client case ran before this token request.");
+			}
+			RSAKey dpopClientKey;
 			try {
-				dpopClientKey = RSAKey.parse(oidcJwkStore.get(OIDC_JWK_DPOP));
+				dpopClientKey = RSAKey.parse(storedDpopJwk);
 			} catch (java.text.ParseException e) {
-				logger.error(e.getMessage());
+				throw new SkipException(
+						"DPoP client key could not be parsed. Ensure the DPoP OIDC client case ran before this token request.");
 			}
 			JSONObject request = new JSONObject(jsonString);
 			String clientId = null;
